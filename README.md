@@ -1,6 +1,6 @@
 # Autonomous Coding Agent
 
-A long-running autonomous coding agent powered by the Claude Agent SDK. This tool can build complete applications over multiple sessions using a two-agent pattern (initializer + coding agent).
+A long-running autonomous coding agent powered by the Claude Agent SDK. This tool can build complete applications over multiple sessions using a two-agent pattern (initializer + coding agent). Includes a React-based UI for monitoring progress in real-time.
 
 ## Video Walkthrough
 
@@ -37,14 +37,25 @@ You need one of the following:
 
 ## Quick Start
 
-### 1. Clone the Repository
+### Option 1: Web UI (Recommended)
 
-```bash
-git clone https://github.com/your-repo/autonomous-coding.git
-cd autonomous-coding
+**Windows:**
+```cmd
+start_ui.bat
 ```
 
-### 2. Run the Start Script
+**macOS / Linux:**
+```bash
+./start_ui.sh
+```
+
+This launches the React-based web UI at `http://localhost:5173` with:
+- Project selection and creation
+- Kanban board view of features
+- Real-time agent output streaming
+- Start/pause/stop controls
+
+### Option 2: CLI Mode
 
 **Windows:**
 ```cmd
@@ -63,9 +74,9 @@ The start script will:
 4. Install dependencies
 5. Launch the main menu
 
-### 3. Create or Continue a Project
+### Creating or Continuing a Project
 
-You'll see a menu with options to:
+You'll see options to:
 - **Create new project** - Start a fresh project with AI-assisted spec generation
 - **Continue existing project** - Resume work on a previous project
 
@@ -77,14 +88,24 @@ For new projects, you can use the built-in `/create-spec` command to interactive
 
 ### Two-Agent Pattern
 
-1. **Initializer Agent (First Session):** Reads your app specification, creates a `feature_list.json` with test cases, sets up the project structure, and initializes git.
+1. **Initializer Agent (First Session):** Reads your app specification, creates features in a SQLite database (`features.db`), sets up the project structure, and initializes git.
 
-2. **Coding Agent (Subsequent Sessions):** Picks up where the previous session left off, implements features one by one, and marks them as passing in `feature_list.json`.
+2. **Coding Agent (Subsequent Sessions):** Picks up where the previous session left off, implements features one by one, and marks them as passing in the database.
+
+### Feature Management
+
+Features are stored in SQLite via SQLAlchemy and managed through an MCP server that exposes tools to the agent:
+- `feature_get_stats` - Progress statistics
+- `feature_get_next` - Get highest-priority pending feature
+- `feature_get_for_regression` - Random passing features for regression testing
+- `feature_mark_passing` - Mark feature complete
+- `feature_skip` - Move feature to end of queue
+- `feature_create_bulk` - Initialize all features (used by initializer)
 
 ### Session Management
 
 - Each session runs with a fresh context window
-- Progress is persisted via `feature_list.json` and git commits
+- Progress is persisted via SQLite database and git commits
 - The agent auto-continues between sessions (3 second delay)
 - Press `Ctrl+C` to pause; run the start script again to resume
 
@@ -108,18 +129,39 @@ For new projects, you can use the built-in `/create-spec` command to interactive
 
 ```
 autonomous-coding/
-├── start.bat                 # Windows start script
-├── start.sh                  # macOS/Linux start script
-├── start.py                  # Main menu and project management
+├── start.bat                 # Windows CLI start script
+├── start.sh                  # macOS/Linux CLI start script
+├── start_ui.bat              # Windows Web UI start script
+├── start_ui.sh               # macOS/Linux Web UI start script
+├── start.py                  # CLI menu and project management
+├── start_ui.py               # Web UI backend (FastAPI server launcher)
 ├── autonomous_agent_demo.py  # Agent entry point
 ├── agent.py                  # Agent session logic
 ├── client.py                 # Claude SDK client configuration
 ├── security.py               # Bash command allowlist and validation
 ├── progress.py               # Progress tracking utilities
 ├── prompts.py                # Prompt loading utilities
+├── api/
+│   └── database.py           # SQLAlchemy models (Feature table)
+├── mcp_server/
+│   └── feature_mcp.py        # MCP server for feature management tools
+├── server/
+│   ├── main.py               # FastAPI REST API server
+│   ├── websocket.py          # WebSocket handler for real-time updates
+│   ├── schemas.py            # Pydantic schemas
+│   ├── routers/              # API route handlers
+│   └── services/             # Business logic services
+├── ui/                       # React frontend
+│   ├── src/
+│   │   ├── App.tsx           # Main app component
+│   │   ├── hooks/            # React Query and WebSocket hooks
+│   │   └── lib/              # API client and types
+│   ├── package.json
+│   └── vite.config.ts
 ├── .claude/
 │   ├── commands/
-│   │   └── create-spec.md    # Interactive spec creation command
+│   │   └── create-spec.md    # /create-spec slash command
+│   ├── skills/               # Claude Code skills
 │   └── templates/            # Prompt templates
 ├── generations/              # Generated projects go here
 ├── requirements.txt          # Python dependencies
@@ -134,7 +176,7 @@ After the agent runs, your project directory will contain:
 
 ```
 generations/my_project/
-├── feature_list.json         # Test cases (source of truth)
+├── features.db               # SQLite database (feature test cases)
 ├── prompts/
 │   ├── app_spec.txt          # Your app specification
 │   ├── initializer_prompt.md # First session prompt
@@ -178,6 +220,45 @@ This project uses a defense-in-depth security approach (see `security.py` and `c
    - Process management: `ps`, `lsof`, `sleep`, `pkill` (dev processes only)
 
 Commands not in the allowlist are blocked by the security hook.
+
+---
+
+## Web UI Development
+
+The React UI is located in the `ui/` directory.
+
+### Development Mode
+
+```bash
+cd ui
+npm install
+npm run dev      # Development server with hot reload
+```
+
+### Building for Production
+
+```bash
+cd ui
+npm run build    # Builds to ui/dist/
+```
+
+**Note:** The `start_ui.bat`/`start_ui.sh` scripts serve the pre-built UI from `ui/dist/`. After making UI changes, run `npm run build` to see them when using the start scripts.
+
+### Tech Stack
+
+- React 18 with TypeScript
+- TanStack Query for data fetching
+- Tailwind CSS v4 with neobrutalism design
+- Radix UI components
+- WebSocket for real-time updates
+
+### Real-time Updates
+
+The UI receives live updates via WebSocket (`/ws/projects/{project_name}`):
+- `progress` - Test pass counts
+- `agent_status` - Running/paused/stopped/crashed
+- `log` - Agent output lines (streamed from subprocess stdout)
+- `feature_update` - Feature status changes
 
 ---
 
